@@ -364,7 +364,9 @@ include(CMake/Version.cmake)
 if(FLATBUFFERS_INSTALL)
   include(GNUInstallDirs)
 
-  install(DIRECTORY include/flatbuffers DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+  if(NOT FLATBUFFERS_BUILD_FLATC)
+    install(DIRECTORY include/flatbuffers DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+  endif()
 
   set(FB_CMAKE_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/flatbuffers")
 
