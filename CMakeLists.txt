@@ -159,6 +159,8 @@ if(EXISTS "${CMAKE_TOOLCHAIN_FILE}")
   # do not apply any global settings if the toolchain
   # is being configured externally
   message(STATUS "Using toolchain file: ${CMAKE_TOOLCHAIN_FILE}.")
+elseif(WIN32)
+  set(FLATBUFFERS_PRIVATE_CXX_FLAGS /EHsc)
 elseif(APPLE)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -stdlib=libc++")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -pedantic -Werror -Wextra -Wno-unused-parameter")
