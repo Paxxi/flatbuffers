@@ -17,9 +17,10 @@
 #ifndef FLATBUFFERS_UTIL_H_
 #define FLATBUFFERS_UTIL_H_
 
-#include "flatbuffers/base.h"
-
 #include <errno.h>
+
+#include "flatbuffers/base.h"
+#include "flatbuffers/stl_emulation.h"
 
 #ifndef FLATBUFFERS_PREFER_PRINTF
 #  include <sstream>
@@ -50,6 +51,9 @@ inline bool is_alpha(char c) {
   return check_ascii_range(c & 0xDF, 'a' & 0xDF, 'z' & 0xDF);
 }
 
+// Check for uppercase alpha
+inline bool is_alpha_upper(char c) { return check_ascii_range(c, 'A', 'Z'); }
+
 // Check (case-insensitive) that `c` is equal to alpha.
 inline bool is_alpha_char(char c, char alpha) {
   FLATBUFFERS_ASSERT(is_alpha(alpha));
@@ -71,6 +75,14 @@ inline bool is_xdigit(char c) {
 
 // Case-insensitive isalnum
 inline bool is_alnum(char c) { return is_alpha(c) || is_digit(c); }
+
+inline char CharToUpper(char c) {
+  return static_cast<char>(::toupper(static_cast<unsigned char>(c)));
+}
+
+inline char CharToLower(char c) {
+  return static_cast<char>(::tolower(static_cast<unsigned char>(c)));
+}
 
 // @end-locale-independent functions for ASCII character set
 
@@ -102,7 +114,7 @@ std::string NumToStringImplWrapper(T t, const char *fmt, int precision = 0) {
   size_t string_width = NumToStringWidth(t, precision);
   std::string s(string_width, 0x00);
   // Allow snprintf to use std::string trailing null to detect buffer overflow
-  snprintf(const_cast<char *>(s.data()), (s.size() + 1), fmt, precision, t);
+  snprintf(const_cast<char *>(s.data()), (s.size() + 1), fmt, string_width, t);
   return s;
 }
 #endif  // FLATBUFFERS_PREFER_PRINTF
@@ -323,11 +335,14 @@ inline bool StringToFloatImpl(T *val, const char *const str) {
 // - If the converted value falls out of range of corresponding return type, a
 // range error occurs. In this case value MAX(T)/MIN(T) is returned.
 template<typename T> inline bool StringToNumber(const char *s, T *val) {
+  // Assert on `unsigned long` and `signed long` on LP64.
+  // If it is necessary, it could be solved with flatbuffers::enable_if<B,T>.
+  static_assert(sizeof(T) < sizeof(int64_t), "unexpected type T");
   FLATBUFFERS_ASSERT(s && val);
   int64_t i64;
   // The errno check isn't needed, will return MAX/MIN on overflow.
   if (StringToIntegerImpl(&i64, s, 0, false)) {
-    const int64_t max = flatbuffers::numeric_limits<T>::max();
+    const int64_t max = (flatbuffers::numeric_limits<T>::max)();
     const int64_t min = flatbuffers::numeric_limits<T>::lowest();
     if (i64 > max) {
       *val = static_cast<T>(max);
@@ -365,7 +380,7 @@ inline bool StringToNumber<uint64_t>(const char *str, uint64_t *val) {
     if (*s == '-') {
       // For unsigned types return the max to distinguish from
       // "no conversion can be performed".
-      *val = flatbuffers::numeric_limits<uint64_t>::max();
+      *val = (flatbuffers::numeric_limits<uint64_t>::max)();
       return false;
     }
   }
@@ -446,7 +461,7 @@ std::string StripPath(const std::string &filepath);
 // Strip the last component of the path + separator.
 std::string StripFileName(const std::string &filepath);
 
-// Concatenates a path with a filename, regardless of wether the path
+// Concatenates a path with a filename, regardless of whether the path
 // ends in a separator or not.
 std::string ConCatPathFileName(const std::string &path,
                                const std::string &filename);
@@ -636,6 +651,32 @@ inline bool EscapeString(const char *s, size_t length, std::string *_text,
   return true;
 }
 
+inline std::string BufferToHexText(const void *buffer, size_t buffer_size,
+                                   size_t max_length,
+                                   const std::string &wrapped_line_prefix,
+                                   const std::string &wrapped_line_suffix) {
+  std::string text = wrapped_line_prefix;
+  size_t start_offset = 0;
+  const char *s = reinterpret_cast<const char *>(buffer);
+  for (size_t i = 0; s && i < buffer_size; i++) {
+    // Last iteration or do we have more?
+    bool have_more = i + 1 < buffer_size;
+    text += "0x";
+    text += IntToStringHex(static_cast<uint8_t>(s[i]), 2);
+    if (have_more) { text += ','; }
+    // If we have more to process and we reached max_length
+    if (have_more &&
+        text.size() + wrapped_line_suffix.size() >= start_offset + max_length) {
+      text += wrapped_line_suffix;
+      text += '\n';
+      start_offset = text.size();
+      text += wrapped_line_prefix;
+    }
+  }
+  text += wrapped_line_suffix;
+  return text;
+}
+
 // Remove paired quotes in a string: "text"|'text' -> text.
 std::string RemoveStringQuotes(const std::string &s);
 
@@ -648,6 +689,9 @@ bool SetGlobalTestLocale(const char *locale_name,
 // Read (or test) a value of environment variable.
 bool ReadEnvironmentVariable(const char *var_name,
                              std::string *_value = nullptr);
+
+// MSVC specific: Send all assert reports to STDOUT to prevent CI hangs.
+void SetupDefaultCRTReportMode();
 
 }  // namespace flatbuffers
 
